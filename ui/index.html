@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>web-ics-ca · 证书签发</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<!-- 页面骨架：左侧导航 + 顶栏 + 可滚动主内容区（见 app.css 的布局说明）。
+     所有交互逻辑在 app.js；这里只放结构，不放行内脚本。 -->
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <img src="/logo.svg" alt="" class="brand-mark">
+      <div class="brand-text">
+        <div class="brand-name">证书签发</div>
+        <div class="brand-sub">web_ics · 内部 CA</div>
+      </div>
+    </div>
+
+    <!-- 七个页签。data-page 与 <section class="page" id="page-XXX"> 的 XXX 对应，
+         由 app.js 的 go() 切换。badge-* 里的数字由 renderState() 填。 -->
+    <nav class="nav" id="nav">
+      <button class="nav-item" data-page="overview"><span class="dot"></span>概览</button>
+      <button class="nav-item" data-page="ca"><span class="dot"></span>根 CA</button>
+      <button class="nav-item" data-page="server"><span class="dot"></span>服务器证书</button>
+      <button class="nav-item" data-page="client"><span class="dot"></span>客户端证书</button>
+      <button class="nav-item" data-page="store"><span class="dot"></span>证书库<span class="badge" id="badge-store">0</span></button>
+      <button class="nav-item" data-page="deny"><span class="dot"></span>吊销名单<span class="badge" id="badge-deny">0</span></button>
+      <button class="nav-item" data-page="conf"><span class="dot"></span>配置对接</button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="version" id="version">—</div>
+      <button class="btn ghost small" id="quit">退出程序</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- 顶栏：证书输出目录（回车或点「应用」提交），右侧是状态胶囊。 -->
+    <header class="topbar">
+      <div class="field inline">
+        <label for="outDir">证书输出目录</label>
+        <input id="outDir" type="text" spellcheck="false" placeholder="./ics-certs">
+        <button class="btn small" id="saveOutDir">应用</button>
+      </div>
+      <div class="topbar-status" id="topStatus"></div>
+    </header>
+
+    <!-- 主内容区。tabindex="-1" 是为了让键盘滚动有作用对象：浏览器把 PageDown
+         发给焦点所在元素的最近可滚祖先，焦点在 body 上时找不到这里。
+         可聚焦但不占 Tab 顺序，免得从侧栏按一堆 Tab 才能到表单。 -->
+    <div class="content" id="content" tabindex="-1">
+
+      <!-- ── 概览 ─────────────────────────────────────────────
+           四步流程条（.flow-step[data-need]）、四张统计卡（#stat-*）、
+           「下一步」提示（#nextStep）都由 renderState() 填充。 -->
+      <section class="page" id="page-overview">
+        <div class="hero">
+          <div class="hero-glow"></div>
+          <h1>给 web_ics 签一套内部证书</h1>
+          <p>
+            生成一张内部 CA，用它签服务器证书与每台设备的客户端证书，再把配置片段贴进
+            <code>web_ics.conf</code>。全程用 Go 标准库签发，不需要 openssl，也不联网。
+          </p>
+          <div class="hero-flow">
+            <div class="flow-step" data-need="ca"><b>1</b><span>建根 CA</span></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step" data-need="server"><b>2</b><span>签服务器证书</span></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step" data-need="client"><b>3</b><span>给设备签客户端证书</span></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step" data-need="conf"><b>4</b><span>贴配置、装证书</span></div>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat" id="stat-ca">
+            <div class="stat-label">根 CA</div>
+            <div class="stat-value">—</div>
+            <div class="stat-note">签发者，私钥不上服务器</div>
+          </div>
+          <div class="stat" id="stat-server">
+            <div class="stat-label">服务器证书</div>
+            <div class="stat-value">—</div>
+            <div class="stat-note">给 web_ics 自己用</div>
+          </div>
+          <div class="stat" id="stat-client">
+            <div class="stat-label">客户端证书</div>
+            <div class="stat-value">—</div>
+            <div class="stat-note">每台要访问的设备一张</div>
+          </div>
+          <div class="stat" id="stat-deny">
+            <div class="stat-label">吊销条目</div>
+            <div class="stat-value">—</div>
+            <div class="stat-note">命中即拒绝访问</div>
+          </div>
+        </div>
+
+        <div class="card" id="nextStepCard">
+          <h2>下一步</h2>
+          <div id="nextStep"></div>
+        </div>
+
+        <div class="card">
+          <h2>这套证书是怎么运转的</h2>
+          <div class="explain-grid">
+            <div class="explain">
+              <h3>单层内部 CA</h3>
+              <p>只有一张自签名的根 CA，没有中间 CA。服务器证书与客户端证书都由它直接签发，
+                验证链只有两跳，出问题时少一层要找。</p>
+            </div>
+            <div class="explain">
+              <h3>私钥不上服务器</h3>
+              <p>服务器只需要 CA 的<em>证书</em>（<code>ca.crt</code>）来验客户端。
+                CA 私钥留在你这台机器上，服务器被拿下也签不出新证书。</p>
+            </div>
+            <div class="explain">
+              <h3>浏览器只看 SAN</h3>
+              <p>服务器证书的 CN 是给人看的，真正决定浏览器认不认的是 SAN 里的
+                内网地址与外网地址。所以那两个框不能空着。</p>
+            </div>
+            <div class="explain">
+              <h3>吊销靠指纹名单</h3>
+              <p>Go 的 TLS 栈不做 CRL 与 OCSP 检查，所以吊销是一份纯文本名单：
+                一行一个 SHA-256 指纹。改完要重启服务。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── 根 CA ────────────────────────────────────────────
+           #caCurrent 是当前 CA 卡片（renderCA 填），下面两个 .tabpane 是
+           「新建 / 导入」两个页签，由 #caTabs 的点击切换 .hidden。 -->
+      <section class="page" id="page-ca">
+        <div class="page-head">
+          <h1>根 CA</h1>
+          <p>整套体系只有这一张签发者。它签服务器证书，也签每一张客户端证书。</p>
+        </div>
+
+        <div class="card" id="caCurrent"></div>
+
+        <div class="tabs" id="caTabs">
+          <button class="tab active" data-tab="create">新建 CA</button>
+          <button class="tab" data-tab="import">导入已有的 CA</button>
+        </div>
+
+        <div class="card tabpane" data-pane="create">
+          <div class="field">
+            <label for="caName">CA 名称 <span class="req">必填</span></label>
+            <input id="caName" type="text" spellcheck="false" placeholder="我的文档站 CA">
+            <div class="help" data-help="ca_name"></div>
+            <div class="err" data-err="name"></div>
+          </div>
+          <div class="field">
+            <label for="caDays">有效期（天） <span class="req">必填</span></label>
+            <input id="caDays" type="number" min="1" max="7300" value="3650">
+            <div class="help" data-help="ca_days"></div>
+            <div class="err" data-err="days"></div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" id="createCA">生成 CA</button>
+            <span class="hint">会写出 <code>ca.crt</code> 与 <code>ca.key</code>，私钥不要外传</span>
+          </div>
+        </div>
+
+        <div class="card tabpane hidden" data-pane="import">
+          <p class="lead">已经有 openssl 或别处建好的 CA 时，把它收进来，之后按统一路径使用。</p>
+          <div class="field">
+            <label for="impCert">CA 证书文件（.crt / .pem）</label>
+            <input id="impCert" type="text" spellcheck="false" placeholder="./old-certs/ca.crt">
+          </div>
+          <div class="field">
+            <label for="impKey">CA 私钥文件（.key）</label>
+            <input id="impKey" type="text" spellcheck="false" placeholder="./old-certs/ca.key">
+          </div>
+          <div class="actions">
+            <button class="btn primary" id="importCA">导入</button>
+            <span class="hint">只做复制，不改内容——重新编码会改变指纹，客户端已装的那份就对不上了</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── 服务器证书 ───────────────────────────────────────
+           每个输入框下面都有一个 .help[data-help]（由 renderSpec 从 /api/spec 填）
+           和一个 .err[data-err]（由 showErrors 按服务端返回的字段名填）。
+           两者用的键名必须与 internal/app 里表单校验的键名一致。 -->
+      <section class="page" id="page-server">
+        <div class="page-head">
+          <h1>服务器证书</h1>
+          <p>给 web_ics 自己用的那张。浏览器打开服务地址时，认的就是这张证书。</p>
+        </div>
+
+        <div class="card">
+          <div class="field">
+            <label for="srvCN">服务器名（CN） <span class="req">必填</span></label>
+            <input id="srvCN" type="text" spellcheck="false" placeholder="docs.example.com">
+            <div class="help" data-help="server_cn"></div>
+            <div class="err" data-err="cn"></div>
+          </div>
+
+          <div class="field">
+            <label for="srvInternal">内网地址 <span class="opt">可留空</span></label>
+            <textarea id="srvInternal" rows="3" spellcheck="false" placeholder="192.168.1.10&#10;nas.lan"></textarea>
+            <div class="help" data-help="server_internal"></div>
+            <div class="err" data-err="internal"></div>
+          </div>
+
+          <div class="field">
+            <label for="srvExternal">外网地址 <span class="opt">可留空</span></label>
+            <textarea id="srvExternal" rows="3" spellcheck="false" placeholder="docs.example.com&#10;www.example.com"></textarea>
+            <div class="help" data-help="server_external"></div>
+            <div class="err" data-err="external"></div>
+          </div>
+
+          <div class="field narrow">
+            <label for="srvDays">有效期（天） <span class="req">必填</span></label>
+            <input id="srvDays" type="number" min="1" max="3650" value="365">
+            <div class="help" data-help="server_days"></div>
+            <div class="err" data-err="days"></div>
+          </div>
+
+          <div class="actions">
+            <button class="btn primary" id="issueServer">签发服务器证书</button>
+            <span class="hint">写出 <code>名称.crt</code> 与 <code>名称.key</code></span>
+          </div>
+        </div>
+
+        <!-- 签发结果卡片。初始带 .hidden，签发成功后由 renderResult() 去掉。 -->
+        <div class="card result hidden" id="serverResult"></div>
+      </section>
+
+      <!-- ── 客户端证书 ─────────────────────────────────────── -->
+      <section class="page" id="page-client">
+        <div class="page-head">
+          <h1>客户端证书</h1>
+          <p>每台要访问 web_ics 的设备签一张。装进系统证书库之后，浏览器打开服务时会弹出选择框。</p>
+        </div>
+
+        <div class="card">
+          <div class="field">
+            <label for="cliCN">终端名（CN） <span class="req">必填</span></label>
+            <input id="cliCN" type="text" spellcheck="false" placeholder="我的手机">
+            <div class="help" data-help="client_cn"></div>
+            <div class="err" data-err="cn"></div>
+          </div>
+
+          <div class="field">
+            <label for="cliOrg">归属（O） <span class="opt">可留空</span></label>
+            <input id="cliOrg" type="text" spellcheck="false" placeholder="运维部">
+            <div class="help" data-help="client_org"></div>
+            <div class="err" data-err="org"></div>
+          </div>
+
+          <div class="field narrow">
+            <label for="cliDays">有效期（天） <span class="req">必填</span></label>
+            <input id="cliDays" type="number" min="1" max="3650" value="365">
+            <div class="help" data-help="client_days"></div>
+            <div class="err" data-err="days"></div>
+          </div>
+
+          <!-- 「同时导出 .pfx」开关。勾选状态决定下面密码框的显隐，
+               也决定密码是否必填（见 app.js 的 cliPfx change 处理）。 -->
+          <div class="field">
+            <label class="switch">
+              <input type="checkbox" id="cliPfx" checked>
+              <span class="track"></span>
+              <span class="switch-label">同时导出 .pfx（Windows 双击即可导入）</span>
+            </label>
+            <div class="help" data-help="pfx_password"></div>
+          </div>
+
+          <div class="field" id="pfxPassField">
+            <label for="cliPass">证书包密码 <span class="req">必填</span></label>
+            <input id="cliPass" type="password" spellcheck="false" placeholder="至少 6 位，记牢">
+            <div class="err" data-err="pfxPassword"></div>
+          </div>
+
+          <div class="actions">
+            <button class="btn primary" id="issueClient">签发客户端证书</button>
+            <span class="hint">写出 <code>终端名.crt</code>、<code>终端名.key</code>，勾选时另有 <code>.pfx</code></span>
+          </div>
+        </div>
+
+        <div class="card result hidden" id="clientResult"></div>
+      </section>
+
+      <!-- ── 证书库 ───────────────────────────────────────────
+           表格内容全部由 renderStore() 生成；筛选是纯前端过滤，不发请求。 -->
+      <section class="page" id="page-store">
+        <div class="page-head">
+          <h1>证书库</h1>
+          <p>列出输出目录里所有的证书。这一页直接扫磁盘，手工放进去的证书也会出现。</p>
+        </div>
+        <div class="card">
+          <div class="toolbar">
+            <input id="storeFilter" type="text" placeholder="按名称、地址或指纹筛选" spellcheck="false">
+          </div>
+          <div id="storeTable"></div>
+        </div>
+      </section>
+
+      <!-- ── 吊销名单 ─────────────────────────────────────────
+           名单存在程序的状态文件里，点「写出 deny.txt」才落到输出目录。 -->
+      <section class="page" id="page-deny">
+        <div class="page-head">
+          <h1>吊销名单</h1>
+          <p>把证书的 SHA-256 指纹写进名单，服务端就会拒绝它。名单要落盘到文件里才生效。</p>
+        </div>
+
+        <div class="card">
+          <div class="callout">
+            <b>为什么是名单而不是 CRL</b>
+            <p>CRL 文件本身也要分发和更新，换来的能力与一份纯文本名单没有区别。
+              名单能手写、能 diff、能进版本库。代价是改完要重启 web_ics。</p>
+          </div>
+          <div class="actions">
+            <button class="btn primary" id="exportDeny">写出 deny.txt</button>
+            <span class="hint" id="denyPath"></span>
+          </div>
+          <div id="denyList" class="deny-list"></div>
+        </div>
+      </section>
+
+      <!-- ── 配置对接 ─────────────────────────────────────────
+           片段由服务端的 ConfSnippet 生成（renderConf 只负责贴进 DOM），
+           所以这里显示的路径永远与实际会写出的文件一致。 -->
+      <section class="page" id="page-conf">
+        <div class="page-head">
+          <h1>配置对接</h1>
+          <p>把下面几行贴进 web_ics 的配置文件，重启服务即可开启客户端证书认证。</p>
+        </div>
+
+        <div class="card">
+          <h2>web_ics.conf 片段</h2>
+          <div id="confWarnings"></div>
+          <pre class="code" id="confSnippet"></pre>
+          <div class="actions">
+            <button class="btn" id="copyConf">复制这段</button>
+            <button class="btn ghost" id="openOutDir">打开输出目录</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>部署清单</h2>
+          <ol class="steps">
+            <li>
+              <b>服务器上</b>：放 <code>ca.crt</code>、<code>服务器证书.crt</code>、<code>服务器证书.key</code>，
+              在 <code>web_ics.conf</code> 里填上对应路径，重启服务。
+              <span class="warn">服务器上不要放 <code>ca.key</code>。</span>
+            </li>
+            <li>
+              <b>每台设备上</b>：把 <code>ca.crt</code> 装进系统信任库。
+              Windows 双击 <code>ca.crt</code> → 安装证书 → 位置选「受信任的根证书颁发机构」。
+            </li>
+            <li>
+              <b>每台设备上</b>：双击 <code>.pfx</code> 导入，输入签发时设的密码。
+              Windows 会放进当前用户的「个人」证书库。
+            </li>
+            <li>
+              <b>Firefox 要单独导一次</b>：它用自己的证书库，不读系统库。
+              设置 → 隐私与安全 → 证书 → 查看证书。
+            </li>
+            <li>
+              <b>验证</b>：浏览器打开服务地址，应该弹出证书选择框，选完就能进去。
+            </li>
+          </ol>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<!-- 右下角浮动提示的容器，内容由 app.js 的 toast() 动态插入。 -->
+<div class="toast-wrap" id="toasts"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

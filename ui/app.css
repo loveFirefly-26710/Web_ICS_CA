@@ -1,0 +1,596 @@
+/* web-ics-ca 界面样式。
+ *
+ * 结构上分三层：左侧固定导航（.sidebar）、顶栏（.topbar）、可滚动主内容区（.content）。
+ * 只有 .content 与 .sidebar 会滚，各自用了同一套薄荷色滚动条样式；
+ * textarea 与代码块保留浏览器默认滚动条。全都染成同一个颜色反而会让人
+ * 以为整页在滚（README「界面滚动」一节有完整说明）。
+ *
+ * 主题是浅色薄荷绿，颜色统一走 :root 里的变量，改配色只动那一处。
+ */
+
+/* 设计变量：颜色、圆角、阴影、字体。 */
+:root {
+  --line:        #d9ece6;
+  --line-soft:   #e9f5f1;
+  --text:        #1d2b28;
+  --text-2:      #45605a;
+  --muted:       #6f8a83;
+  --accent:      #14b8a6;
+  --accent-deep: #0d9488;
+  --accent-soft: #dcf5ef;
+  --accent-pale: #eefaf7;
+  --amber:       #f59e0b;
+  --amber-soft:  #fdf3e0;
+  --danger:      #d94b4b;
+  --danger-soft: #fdecec;
+  --card:        #ffffff;
+
+  --radius:    14px;
+  --radius-lg: 18px;
+  --radius-sm: 9px;
+  --shadow:    0 2px 8px rgba(23, 108, 96, .06);
+  --shadow-md: 0 6px 20px rgba(23, 108, 96, .09);
+  --shadow-lg: 0 16px 40px rgba(23, 108, 96, .12);
+
+  --mono: 'Cascadia Code', Consolas, 'Courier New', monospace;
+  --sans: 'Segoe UI', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+/* 通用工具类。.hidden 由 app.js 用来收起未使用的结果卡片与未选中的页签面板。 */
+.hidden { display: none; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font: 14px/1.65 var(--sans);
+  color: var(--text);
+  background: linear-gradient(155deg, #eafaf6 0%, #f4fbf8 45%, #fdf8ef 100%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 右上、左下两团柔光，纯装饰，不接收鼠标事件。 */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(420px 320px at 82% 8%,  rgba(20, 184, 166, .10), transparent 70%),
+    radial-gradient(360px 300px at 12% 88%, rgba(245, 158, 11, .08), transparent 70%);
+}
+
+/* 整页栅格：左栏固定 234px，右栏自适应。
+ *
+ * grid-template-rows: 100% 与 .main 的 min-height: 0 是一对，缺一不可：
+ * 栅格子项默认 min-height: auto，会拒绝收缩到内容高度以下，于是主区被内容撑高、
+ * 超出视口的部分被 overflow: hidden 裁掉，而里面的 .content 因为容器跟着变高，
+ * 永远没有溢出、永远不出现滚动条。症状是「页面底部的内容够不着」。
+ * 动这两行之前先想清楚。 */
+.app {
+  position: relative;
+  display: grid;
+  grid-template-columns: 234px 1fr;
+  grid-template-rows: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+
+/* ── 左侧导航栏 ───────────────────────────────────────────── */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 14px 16px;
+  background: rgba(255, 255, 255, .72);
+  border-right: 1px solid var(--line);
+  backdrop-filter: blur(12px);
+  overflow-y: auto;
+}
+
+.brand { display: flex; align-items: center; gap: 11px; padding: 0 6px; }
+
+.brand-mark {
+  width: 38px; height: 38px;
+  filter: drop-shadow(0 3px 8px rgba(20, 184, 166, .35));
+}
+
+.brand-name { font-size: 15px; font-weight: 650; letter-spacing: .3px; }
+.brand-sub  { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+
+.nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px;
+  border: 0; border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit; font-size: 13.5px; color: var(--text-2);
+  text-align: left; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.nav-item:hover { background: var(--accent-pale); color: var(--accent-deep); }
+
+/* 导航项前的小圆点，选中时点亮并加一圈光晕。 */
+.nav-item .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--line); flex: none;
+  transition: background .15s, box-shadow .15s;
+}
+.nav-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+.nav-item.active .dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, .18);
+}
+
+/* 导航项右侧的数量角标（证书数、吊销数）。 */
+.badge {
+  margin-left: auto;
+  min-width: 20px; padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-deep);
+  font-size: 11px; font-weight: 600; text-align: center;
+}
+
+.sidebar-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 0 4px;
+}
+.version { font: 11px/1 var(--mono); color: var(--muted); }
+
+
+/* ── 顶栏与主内容区 ───────────────────────────────────────── */
+
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+.topbar {
+  display: flex; align-items: center; gap: 18px;
+  padding: 13px 24px;
+  background: rgba(255, 255, 255, .6);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(12px);
+}
+
+.field.inline { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
+.field.inline label { font-size: 12.5px; color: var(--muted); flex: none; }
+.field.inline input { max-width: 460px; }
+
+.topbar-status { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); flex: none; }
+
+/* 唯一的主滚动容器。tabindex="-1" 让它可以被聚焦，键盘滚动才有作用对象
+ * （浏览器把 PageDown 发给焦点所在元素的最近可滚祖先）。 */
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 24px 48px;
+  /* 常驻一条沟槽：长短不一的页面之间切换时，滚动条的出现与消失不会让内容左右跳。 */
+  scrollbar-gutter: stable;
+}
+
+.content:focus { outline: none; }
+
+
+/* ── 滚动条（薄荷色胶囊）─────────────────────────────────────
+ * 只作用于主内容区与侧栏。滑块比轨道窄 4px：2px 透明边框配 background-clip，
+ * 看着轻一些。CSS 里写 10px，在 devicePixelRatio 1.25 的屏上实测 9px，那是
+ * 浏览器按设备像素取整，不是样式没生效。Firefox 不认 ::-webkit-scrollbar，
+ * 会退回自己的细滚动条，功能不受影响。 */
+
+.content::-webkit-scrollbar,
+.sidebar::-webkit-scrollbar { width: 10px; height: 10px; }
+
+.content::-webkit-scrollbar-track,
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+
+.content::-webkit-scrollbar-thumb,
+.sidebar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+  background-color: #b9e6dc;
+}
+.content::-webkit-scrollbar-thumb:hover,
+.sidebar::-webkit-scrollbar-thumb:hover { background-color: var(--accent); }
+
+.content::-webkit-scrollbar-thumb:active,
+.sidebar::-webkit-scrollbar-thumb:active { background-color: var(--accent-deep); }
+
+/* 去掉两端的箭头按钮与右下角的小方块。 */
+.content::-webkit-scrollbar-button,
+.sidebar::-webkit-scrollbar-button { display: none; }
+
+.content::-webkit-scrollbar-corner,
+.sidebar::-webkit-scrollbar-corner { background: transparent; }
+
+
+/* ── 页面容器 ─────────────────────────────────────────────── */
+
+/* 七个页签是七个 .page，靠 .active 切换显示；切页时由 app.js 的 go() 负责。 */
+.page { display: none; max-width: 980px; }
+.page.active { display: block; animation: rise .22s ease both; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.page-head { margin-bottom: 18px; }
+.page-head h1 { margin: 0 0 5px; font-size: 21px; font-weight: 650; letter-spacing: .2px; }
+.page-head p  { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+
+/* ── 卡片 ─────────────────────────────────────────────────── */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+.card h2 { margin: 0 0 14px; font-size: 15px; font-weight: 620; }
+.card > .lead { margin: 0 0 16px; color: var(--muted); font-size: 13.5px; }
+
+/* 签发结果卡片：边框换成主题色，跟普通卡片区分开。初始带 .hidden，
+ * 签发成功后由 app.js 去掉。 */
+.card.result { border-color: var(--accent); box-shadow: var(--shadow-md); }
+
+
+/* ── 概览页 ───────────────────────────────────────────────── */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: 26px 26px 22px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, #ffffff 0%, #f7fdfb 60%, #fefaf1 100%);
+  box-shadow: var(--shadow);
+}
+.hero-glow {
+  position: absolute; top: -70px; right: -50px;
+  width: 240px; height: 240px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(20, 184, 166, .22), rgba(245, 158, 11, .10) 55%, transparent 72%);
+  pointer-events: none;
+}
+.hero h1 { position: relative; margin: 0 0 8px; font-size: 22px; font-weight: 650; }
+.hero p  { position: relative; margin: 0; max-width: 660px; color: var(--text-2); font-size: 13.5px; }
+
+/* 四步流程条：建 CA → 签服务器证书 → 签客户端证书 → 贴配置。
+ * .done 由 app.js 按当前进度点亮。 */
+.hero-flow {
+  position: relative;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-top: 20px;
+}
+.flow-step {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 13px 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12.5px; color: var(--muted);
+}
+.flow-step b {
+  display: grid; place-items: center;
+  width: 19px; height: 19px; border-radius: 50%;
+  background: var(--line-soft); color: var(--muted);
+  font-size: 11px; font-weight: 700;
+}
+.flow-step.done { border-color: var(--accent); color: var(--accent-deep); }
+.flow-step.done b { background: var(--accent); color: #fff; }
+.flow-arrow { color: var(--line); font-size: 13px; }
+
+/* 四张统计卡。 */
+.stat-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 12px; margin-bottom: 16px;
+}
+.stat {
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.stat-label { font-size: 12.5px; color: var(--muted); }
+.stat-value { margin: 3px 0 2px; font-size: 22px; font-weight: 650; letter-spacing: .4px; }
+/* 三种语义色，由 app.js 的 statCard() 挂上。 */
+.stat-value.ok   { color: var(--accent-deep); }
+.stat-value.warn { color: var(--amber); }
+.stat-value.bad  { color: var(--danger); }
+.stat-note { font-size: 11.5px; color: var(--muted); }
+
+.explain-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 22px; }
+.explain h3 { margin: 0 0 5px; font-size: 13.5px; font-weight: 620; color: var(--accent-deep); }
+.explain p  { margin: 0; font-size: 13px; color: var(--text-2); }
+
+
+/* ── 表单 ─────────────────────────────────────────────────── */
+
+.field { margin-bottom: 16px; }
+.field.narrow { max-width: 260px; }
+.field > label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.field .req { color: var(--danger); font-size: 11.5px; font-weight: 500; margin-left: 4px; }
+.field .opt { color: var(--muted); font-size: 11.5px; font-weight: 400; margin-left: 4px; }
+
+input[type=text], input[type=number], input[type=password], textarea {
+  width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fbfefd;
+  font: inherit; font-size: 13.5px; color: var(--text);
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+/* 会填路径、指纹、地址的框统一用等宽字体，方便核对字符。 */
+input[type=text], input[type=password] { font-family: var(--mono); font-size: 12.5px; }
+textarea { font-family: var(--mono); font-size: 12.5px; resize: vertical; line-height: 1.7; }
+
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, .14);
+}
+/* .bad 由 app.js 的 showErrors() 挂在校验失败的输入框上。 */
+input.bad, textarea.bad { border-color: var(--danger); background: #fffafa; }
+input.bad:focus, textarea.bad:focus { box-shadow: 0 0 0 3px rgba(217, 75, 75, .13); }
+
+/* 输入框下面的帮助文本，内容由 /api/spec 提供（见 app.js 的 renderSpec）。 */
+.help { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.help .purpose { display: block; }
+.help .format { display: block; margin-top: 2px; }
+.help code {
+  padding: 1px 5px; border-radius: 4px;
+  background: var(--accent-pale); color: var(--accent-deep);
+  font: 11.5px/1.5 var(--mono);
+}
+.help details { margin-top: 5px; }
+.help summary { cursor: pointer; color: var(--accent-deep); font-size: 11.5px; user-select: none; }
+.help ul { margin: 5px 0 0; padding-left: 17px; }
+.help li { font-size: 11.5px; margin-bottom: 2px; }
+
+/* 字段级错误提示条，默认隐藏，加 .show 才出现。 */
+.err {
+  display: none;
+  margin-top: 6px; padding: 7px 10px;
+  border-left: 3px solid var(--danger);
+  border-radius: 0 6px 6px 0;
+  background: var(--danger-soft); color: #a63030;
+  font-size: 12.5px;
+}
+.err.show { display: block; }
+
+.actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+.hint { font-size: 12px; color: var(--muted); }
+.hint code {
+  padding: 1px 5px; border-radius: 4px;
+  background: var(--accent-pale); color: var(--accent-deep);
+  font: 11.5px/1.5 var(--mono);
+}
+
+/* 「同时导出 .pfx」用的开关。真正的 checkbox 藏起来（不可见但保留可访问性），
+ * 视觉由 .track 的伪元素画。 */
+.switch { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.switch input { position: absolute; opacity: 0; pointer-events: none; }
+.switch .track {
+  position: relative; width: 38px; height: 21px; flex: none;
+  border-radius: 999px; background: var(--line);
+  transition: background .18s;
+}
+.switch .track::after {
+  content: ''; position: absolute; top: 2.5px; left: 3px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .18);
+  transition: transform .18s;
+}
+.switch input:checked + .track { background: var(--accent); }
+.switch input:checked + .track::after { transform: translateX(16px); }
+.switch-label { font-weight: 500; }
+
+
+/* ── 按钮 ─────────────────────────────────────────────────── */
+
+.btn {
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff; color: var(--text-2);
+  font: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, box-shadow .15s, transform .1s;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent-deep); }
+.btn:active { transform: translateY(1px); }
+.btn.small { padding: 6px 12px; font-size: 12.5px; }
+.btn.ghost { background: transparent; border-color: var(--line); }
+.btn.tiny { padding: 3px 9px; font-size: 11.5px; font-weight: 500; border-radius: 6px; }
+
+.btn.primary {
+  border: 0; color: #fff;
+  background: linear-gradient(135deg, #2dd4bf, var(--accent) 55%, var(--accent-deep));
+  box-shadow: 0 4px 14px rgba(13, 148, 136, .28);
+}
+.btn.primary:hover { color: #fff; box-shadow: 0 6px 20px rgba(13, 148, 136, .34); }
+/* 处理中的按钮：app.js 的 busy() 会禁用并改文案。 */
+.btn.primary:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
+
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+
+/* ── 页签（根 CA 页的「新建 / 导入」）──────────────────────── */
+
+.tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.tab {
+  padding: 7px 15px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: rgba(255, 255, 255, .7); color: var(--muted);
+  font: inherit; font-size: 13px; cursor: pointer;
+  transition: all .15s;
+}
+.tab:hover { color: var(--accent-deep); }
+.tab.active {
+  border-color: var(--accent);
+  background: var(--accent-soft); color: var(--accent-deep); font-weight: 600;
+}
+
+
+/* ── 证书库表格 ───────────────────────────────────────────── */
+
+.toolbar { margin-bottom: 12px; }
+.toolbar input { max-width: 340px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th {
+  padding: 8px 10px; text-align: left;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted); font-weight: 600; font-size: 11.5px;
+  white-space: nowrap;
+}
+td { padding: 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--accent-pale); }
+
+/* 证书库里放路径、指纹、地址用的等宽小字。word-break 让长路径换行，
+ * 这是「窄窗口不出横向滚动」的前提之一。 */
+.mono { font-family: var(--mono); font-size: 11.5px; }
+.path { font-family: var(--mono); font-size: 11px; color: var(--muted); word-break: break-all; }
+.hosts { color: var(--text-2); font-family: var(--mono); font-size: 11.5px; }
+
+/* 状态小胶囊：角色标签与到期/吊销状态共用一套底样式。 */
+.pill {
+  display: inline-block; padding: 2px 8px;
+  border-radius: 999px; font-size: 11px; font-weight: 600;
+  background: var(--accent-pale); color: var(--accent-deep);
+}
+.pill.ca     { background: #e8f0ff; color: #3a63c0; }
+.pill.server { background: var(--accent-soft); color: var(--accent-deep); }
+.pill.client { background: var(--amber-soft); color: #a16207; }
+.pill.bad    { background: var(--danger-soft); color: #a63030; }
+.pill.warn   { background: var(--amber-soft); color: #a16207; }
+
+/* 空状态提示（没有证书、名单为空等）。 */
+.empty { padding: 26px; text-align: center; color: var(--muted); font-size: 13px; }
+
+
+/* ── 签发结果卡片 ─────────────────────────────────────────── */
+
+.result-head {
+  display: flex; align-items: center; gap: 9px;
+  margin-bottom: 12px; font-size: 14.5px; font-weight: 620; color: var(--accent-deep);
+}
+.result-head .tick {
+  display: grid; place-items: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-size: 12px;
+}
+
+/* 键值对表：CA 卡片与结果卡片共用。 */
+.kv { display: grid; grid-template-columns: 116px 1fr; gap: 6px 14px; font-size: 12.5px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; word-break: break-all; }
+.kv dd.mono { font-family: var(--mono); font-size: 11.5px; }
+
+
+/* ── 配置片段与部署清单 ───────────────────────────────────── */
+
+.code {
+  margin: 0 0 14px; padding: 14px 16px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: #f7fdfb;
+  font: 12.5px/1.85 var(--mono);
+  white-space: pre-wrap; word-break: break-all;
+  color: var(--text-2);
+}
+
+/* 通用提示块：概览页的「下一步」与吊销页的说明都用它。 */
+.callout {
+  margin-bottom: 14px; padding: 12px 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--accent-pale);
+}
+.callout b { display: block; font-size: 13px; margin-bottom: 3px; }
+.callout p { margin: 0; font-size: 12.5px; color: var(--text-2); }
+
+/* 琥珀色的警告块，用在配置对接页（还差几步）。 */
+.warnbar {
+  margin-bottom: 12px; padding: 9px 12px;
+  border-left: 3px solid var(--amber);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--amber-soft);
+  font-size: 12.5px; color: #7c4a03;
+}
+.warnbar ul { margin: 4px 0 0; padding-left: 17px; }
+
+.steps { margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-2); }
+.steps li { margin-bottom: 10px; }
+.steps code {
+  padding: 1px 5px; border-radius: 4px;
+  background: var(--accent-pale); color: var(--accent-deep);
+  font: 11.5px/1.5 var(--mono);
+}
+.steps .warn { color: var(--danger); }
+
+
+/* ── 吊销名单 ─────────────────────────────────────────────── */
+
+.deny-list { margin-top: 14px; }
+.deny-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 0; border-top: 1px solid var(--line-soft);
+  font-size: 12.5px;
+}
+.deny-row .fp { font-family: var(--mono); font-size: 11px; color: var(--muted); flex: 1; word-break: break-all; }
+.deny-row .note { color: var(--text-2); flex: none; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+
+/* ── 右下角浮动提示 ───────────────────────────────────────── */
+
+.toast-wrap {
+  position: fixed; right: 22px; bottom: 22px;
+  display: flex; flex-direction: column; gap: 9px;
+  z-index: 50;
+}
+/* 由 app.js 的 toast() 动态创建，几秒后自动移除；错误提示停留更久。 */
+.toast {
+  padding: 11px 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  max-width: 400px;
+  animation: slide .2s ease both;
+}
+.toast.ok   { border-left: 3px solid var(--accent); }
+.toast.bad  { border-left: 3px solid var(--danger); }
+.toast b { display: block; margin-bottom: 2px; }
+.toast span { color: var(--muted); font-size: 12.5px; word-break: break-word; }
+
+@keyframes slide {
+  from { opacity: 0; transform: translateX(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+
+/* ── 窄窗口 ───────────────────────────────────────────────── */
+
+@media (max-width: 1080px) {
+  .app { grid-template-columns: 200px 1fr; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .explain-grid { grid-template-columns: 1fr; }
+}

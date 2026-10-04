@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="web-ics-ca">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fcd34d" stop-opacity=".85"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="wing" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#99f6e4" stop-opacity=".95"/>
+      <stop offset="100%" stop-color="#14b8a6" stop-opacity=".45"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2dd4bf"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="24" cy="30" r="15" fill="url(#glow)"/>
+
+  <ellipse cx="14.5" cy="17.5" rx="8.6" ry="5" fill="url(#wing)" transform="rotate(-26 14.5 17.5)"/>
+  <ellipse cx="33.5" cy="17.5" rx="8.6" ry="5" fill="url(#wing)" transform="rotate(26 33.5 17.5)"/>
+
+  <ellipse cx="24" cy="24.5" rx="4.4" ry="8.4" fill="url(#body)"/>
+  <circle cx="24" cy="14.6" r="3.3" fill="#14b8a6"/>
+  <circle cx="24" cy="31" r="3.1" fill="#fbbf24"/>
+</svg>

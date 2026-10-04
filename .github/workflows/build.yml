@@ -1,0 +1,67 @@
+name: build
+
+# push 与 PR 都跑一遍：静态检查 + 构建 + 产物核对。
+# 用仓库自带的构建脚本，而不是在 workflow 里另抄一遍 go build——
+# 脚本里有 BOM 守卫与「产物里不能有绝对路径」两道核对，走脚本才等于本地怎么跑 CI 就怎么跑。
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 构建脚本默认把 GOPROXY 设成 goproxy.cn（给国内网络准备的），而 runner 在境外。
+# 脚本只在环境变量为空时才设默认值，所以这里给的值会生效。
+env:
+  GOPROXY: https://proxy.golang.org,direct
+
+jobs:
+  windows:
+    name: Windows（跑 build.ps1）
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      # 用 Windows PowerShell 5.1 而不是 pwsh：
+      # build.ps1 里有中文注释，5.1 对无 BOM 的 UTF-8 会按 ANSI 解码，
+      # 这一条正好把「BOM 被弄丢」这类问题在 CI 上拦下来。
+      - name: 构建
+        shell: powershell
+        run: .\build.ps1
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-ics-ca-windows-amd64
+          path: dist/web-ics-ca.exe
+          if-no-files-found: error
+
+  linux:
+    name: Linux（跑 build.sh）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: 构建
+        run: bash ./build.sh
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-ics-ca-linux-amd64
+          path: dist/web-ics-ca-linux-amd64
+          if-no-files-found: error

@@ -1,0 +1,23 @@
+# 构建产物
+/dist/
+*.exe
+
+# 本工具的运行状态文件（记住输出目录与吊销名单），每台机器不一样
+web-ics-ca.json
+
+# 证书输出目录与私钥。默认示例目录叫 ics-certs，另外不管在哪都别把私钥提交上去
+/ics-certs/
+*.pfx
+*.key
+
+# 审计与去AI味的工作目录（报告、脚本、基线副本），不属于项目本身
+/audit-workspace/
+
+# 首次提交用的说明文件，提交完可以删
+/FIRST_COMMIT.txt
+
+# 编辑器与工具的工作目录
+.vscode/
+.idea/
+*.swp
+.workbuddy-ai/

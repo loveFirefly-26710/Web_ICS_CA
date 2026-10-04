@@ -1,0 +1,21 @@
+# 构建上下文里不需要的东西。
+# 少传一点，镜像构建快一点，也避免把证书私钥带进镜像层。
+
+.git
+.github
+dist
+docs
+audit-workspace
+.workbuddy-ai
+
+*.exe
+*.pfx
+*.key
+web-ics-ca.json
+ics-certs
+
+*.md
+!README.md
+
+.vscode
+.idea

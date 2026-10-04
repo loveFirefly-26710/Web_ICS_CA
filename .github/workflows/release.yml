@@ -1,0 +1,112 @@
+name: release
+
+# 推 master 就发版，不用另外打标签：
+#
+#   改代码 → commit → push → 这里跑一遍，Release v<VERSION> 里换成最新的 EXE
+#   要出新版本 → 改 VERSION 文件里的数字 → push → 多一个 Release
+#
+# 版本号只有一个来源，就是仓库根目录的 VERSION 文件。所以「发的是几版」完全由那个文件决定，
+# 不会出现手敲构建命令时忘了改 ldflags、产物与脚本版本不一致的情况。
+#
+# 标签触发（推 v* 标签时按标签名发）和手动触发也留着，作为备用。
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+# packages: write 是仓库令牌的范围。若 GHCR 里已有同名 package，还要在该 package 的
+# Package settings → Manage Actions access 中给本仓库 Write 权限；单改这里不会覆盖包级 ACL。
+permissions:
+  contents: write
+  packages: write
+
+env:
+  # 构建脚本默认用 goproxy.cn（给国内网络准备的），runner 在境外，换回官方代理
+  GOPROXY: https://proxy.golang.org,direct
+
+jobs:
+  windows:
+    name: 构建并发布 Windows EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      # 标签推送用标签名，其余情况用 VERSION 文件里的数字，最后都归到一个标签名
+      - name: 算出要发布的标签
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="v$(tr -d '[:space:]' < VERSION)"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "要发布的标签: $TAG"
+
+      - name: 构建
+        shell: powershell
+        run: |
+          $v = "${{ steps.ver.outputs.tag }}" -replace '^v', ''
+          .\build.ps1 -Version $v
+
+      - name: 上传产物（供手动下载）
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-ics-ca-windows-amd64
+          path: dist/web-ics-ca.exe
+          if-no-files-found: error
+
+      # 用 gh CLI 而不是第三方 release action：原生工具，少维护一个依赖。
+      # 先 view 是为了「同一个版本又推了一次」——这时不重建 Release，只把里面的 EXE 换成
+      # 最新的。想发新版就改 VERSION 文件。
+      - name: 发布 Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，只替换里面的 EXE"
+            gh release upload "$TAG" dist/web-ics-ca.exe --clobber
+          else
+            gh release create "$TAG" dist/web-ics-ca.exe \
+              --title "$TAG" \
+              --generate-notes
+          fi
+
+  image:
+    name: 推送容器镜像到 GHCR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # GHCR 的镜像名必须全小写，而 GitHub 的仓库名可以有大写字母，
+      # 直接拿 github.repository 拼会在 push 时报 invalid reference format
+      - name: 算出镜像名
+        id: img
+        run: echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: 登录 GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: 构建并推送
+        run: |
+          IMG="${{ steps.img.outputs.name }}"
+          TAG="v$(tr -d '[:space:]' < VERSION)"
+          docker build -t "$IMG:$TAG" -t "$IMG:latest" .
+          if ! docker push "$IMG:$TAG"; then
+            echo "::error::GHCR 拒绝写入。请到该 package 的 Package settings → Manage Actions access，给本仓库授予 Write 权限。"
+            exit 1
+          fi
+          if ! docker push "$IMG:latest"; then
+            echo "::error::GHCR 拒绝更新 latest。请确认本仓库对该 package 有 Write 权限。"
+            exit 1
+          fi

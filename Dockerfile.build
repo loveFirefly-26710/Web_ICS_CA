@@ -1,0 +1,24 @@
+# 交叉编译出 Windows EXE。
+#
+# 给没有 Windows 机器的场景用（Linux 开发机、CI）。产物从 /dist 挂出来。
+#
+# 用法：
+#   docker build -f Dockerfile.build -t web-ics-ca-build .
+#   docker run --rm -v "$PWD/dist:/dist" web-ics-ca-build
+#
+# 产物出现在宿主机的 dist/web-ics-ca.exe。
+
+FROM golang:1.25-alpine AS build
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+ENV CGO_ENABLED=0 GOOS=windows GOARCH=amd64
+# -H windowsgui 不能省，否则编出来的是控制台子系统程序，双击会先弹一个黑框
+RUN go build -trimpath -ldflags="-s -w -H windowsgui" -o /out/web-ics-ca.exe .
+
+FROM alpine:3.20
+COPY --from=build /out/web-ics-ca.exe /web-ics-ca.exe
+CMD ["cp", "/web-ics-ca.exe", "/dist/web-ics-ca.exe"]
